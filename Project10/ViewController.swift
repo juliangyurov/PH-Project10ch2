@@ -4,7 +4,7 @@
 //
 //  Created by Yulian Gyuroff on 11.10.23.
 //
-
+import LocalAuthentication
 import UIKit
 
 class ViewController: UICollectionViewController ,
@@ -12,19 +12,28 @@ class ViewController: UICollectionViewController ,
                       UINavigationControllerDelegate {
     
     var people = [Person]()
+    var unlockedPeople = [Person]()
+    var unlockButton = UIBarButtonItem()
+    var lockButton = UIBarButtonItem()
+    var unlockedPictures = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addNewPerson))
+        
+        unlockButton = UIBarButtonItem(title: "Unlock", style: .plain, target: self, action: #selector(unlockPictures))
+        lockButton = UIBarButtonItem(title: "Done", style: .plain, target: self, action: #selector(lockPictures))
+        
+        navigationItem.rightBarButtonItem = unlockButton
     }
     override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return people.count
+        return unlockedPeople.count
     }
     override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         guard  let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "Person", for: indexPath) as? PersonCell else { fatalError("Unable to deque th PersonCell.")}
         
-        let person = people[indexPath.item]
+        let person = unlockedPeople[indexPath.item]
         cell.name.text = person.name
         let path = getDocumentsDirectory().appendingPathComponent(person.image)
         cell.imageView.image = UIImage(contentsOfFile: path.path)
@@ -37,6 +46,13 @@ class ViewController: UICollectionViewController ,
     }
     
     @objc func addNewPerson() {
+        guard unlockedPictures else {
+            let ac = UIAlertController(title: "Not allowed", message: "Unlock first", preferredStyle: .alert)
+            ac.addAction(UIAlertAction(title: "OK", style: .cancel))
+            present(ac, animated: true)
+            return
+        }
+                
         let acChoice = UIAlertController(title: "Select image source", message: nil, preferredStyle: .alert)
         acChoice.addAction(UIAlertAction(title: "Library", style: .default, handler: submitForLibrary))
         acChoice.addAction(UIAlertAction(title: "Camera", style: .default, handler: submitForCamera))
@@ -71,10 +87,16 @@ class ViewController: UICollectionViewController ,
         }
         let person = Person(name: "Unknown", image: imageName)
         people.append(person)
+        if unlockedPictures {
+            unlockedPeople = people
+        }else{
+            unlockedPeople.removeAll()
+        }
         collectionView.reloadData()
         
         dismiss(animated: true)
     }
+    
     func getDocumentsDirectory() -> URL {
         let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
         return paths[0]
@@ -89,6 +111,7 @@ class ViewController: UICollectionViewController ,
             [weak self,weak ac] _ in
             guard let newName = ac?.textFields?[0].text else { return }
             person.name = newName
+            self?.unlockedPeople = self?.people ?? [Person]()
             self?.collectionView.reloadData()
         })
         ac.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -103,12 +126,52 @@ class ViewController: UICollectionViewController ,
         acFirst.addAction(UIAlertAction(title: "Delete", style: .default){
             [weak self] _ in
             self?.people.remove(at: indexPath.item)
+            self?.unlockedPeople = self?.people ?? [Person]()
             self?.collectionView.reloadData()
         })
         
         present(acFirst, animated: true)
-        
-        
     }
+    
+    @objc func unlockPictures() {
+        
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            let reason = "Identify yourself!"
+            
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                                   localizedReason: reason) { [weak self] success, authenticationError in
+                DispatchQueue.main.async {
+                    if success {
+                        self?.unlockedPeople = self?.people ?? [Person]()
+                        self?.unlockedPictures = true
+                        self?.collectionView.reloadData()
+                    } else {
+                        //error
+                        let ac = UIAlertController(title: "Authentication failed", message: "You could not be verified, please try again", preferredStyle: .alert)
+                        ac.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(ac, animated: true)
+                    }
+                }
+            }
+            
+        } else {
+            // no biometry
+            let ac = UIAlertController(title: "Biometry unavailable", message: "Your device is not configured for biometric authentication.", preferredStyle: .alert)
+            ac.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(ac, animated: true)
+        }
+        
+        navigationItem.rightBarButtonItem = lockButton
+    }
+    
+    @objc func lockPictures() {
+        unlockedPeople.removeAll()
+        unlockedPictures = false
+        navigationItem.rightBarButtonItem = unlockButton
+        collectionView.reloadData()
+    }
+    
 }
 

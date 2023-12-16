@@ -8,6 +8,8 @@
 	<string>This application need to access camera.</string>
 	<key>CFBundleIdentifier</key>
 	<string></string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Identify yourself</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
